@@ -1,0 +1,9 @@
+# Old manual backups and editor swap files
+*_old*
+*.swp
+.*.swp
+
+# Default server and diagnostic files
+index.nginx-debian.html
+info.php
+/docs/

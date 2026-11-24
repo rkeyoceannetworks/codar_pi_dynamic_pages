@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Codar Pi Dashboard</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🌊</text></svg>">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <h1>Raspberry Pi Zero HQ rev1.0</h1>
+    
+    <div style="margin-bottom: 15px;">
+        <a href="/docs/" target="_blank" class="chart-btn" style="text-decoration: none; background-color: #e67e22; padding: 6px 15px; font-size: 14px;">📖 View Documentation</a>
+    </div>
+
+<header style="display: flex; justify-content: space-between; align-items: center;">
+    <h1>Codar Pi Dashboard</h1>
+    <div id="usb-status-indicator" style="padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; background: #34495e; color: #bdc3c7;">
+        USB: CHECKING...
+    </div>
+</header>
+
+ <!-- -------------- -->
+ <!-- Navigation Bar -->
+ <!-- -------------- -->
+
+    <div class="nav-bar">
+        <button class="nav-btn active" onclick="switchTab('tab-overview', this)">🌍 Overview & Sensors</button>
+        <button class="nav-btn" onclick="switchTab('tab-emi', this)">⚡ EMI-300 Dashboard</button>
+        <button class="nav-btn" onclick="switchTab('tab-pi', this)">🖥️ Pi Internal</button>
+        <button class="nav-btn" onclick="switchTab('tab-compare', this)">📊 Analysis</button>
+        <button class="nav-btn" onclick="switchTab('tab-backups', this)">💾 USB Backups</button>
+        <button class="nav-btn" onclick="switchTab('tab-logs', this); fetchLogs()">📝 System Logs</button>
+        <button class="nav-btn" onclick="switchTab('tab-manual', this)">📝 Manual Log</button>
+    </div>
+
+    <div class="global-controls">
+        <div class="filter-bar" style="margin-top: 0;">
+            <label for="start-date">Start:</label> <input type="datetime-local" id="start-date">
+            <label for="end-date">End:</label> <input type="datetime-local" id="end-date">
+            
+            <label for="res-select" style="margin-left: 10px;">Resolution:</label>
+            <select id="res-select" onchange="toggleCustomRes()">
+                <option value="raw">Raw (1-Min)</option>
+                <option value="5min">5-Min Average</option>
+                <option value="hourly">1-Hour Average</option>
+                <option value="daily">1-Day Average</option>
+                <option value="custom">Custom...</option>
+            </select>
+            
+            <div id="custom-res-container" style="display: none; display: inline-block;">
+                <input type="number" id="custom-minutes" value="15" min="2" style="width: 50px;">
+                <label for="custom-minutes">mins</label>
+            </div>
+
+            <button class="chart-btn filter-btn" onclick="fetchAndDrawCharts()">Load Data</button>
+        </div>
+        
+        <div class="filter-bar" style="background-color: #2c3e50;">
+            <label for="csv-select">Export Data:</label>
+            <select id="csv-select">
+                <option value="all">Everything (All Charts)</option>
+                <option value="sensors">Environment Sensors Only</option>
+                <option value="voltages">EMI-300 Voltages Only</option>
+                <option value="system">Pi System Health Only</option>
+                <option value="emi_sys">EMI-300 System Health Only</option>
+                <option value="emi_digital">EMI-300 Digital States Only</option>
+            </select>
+            <button class="chart-btn export-btn" onclick="downloadCSV()">Download CSV</button>
+            <button class="chart-btn reset-btn" style="margin-left: 10px;" onclick="resetZoom()">Reset Zoom</button>
+        </div>
+    </div>
+
+    <div id="tab-overview" class="tab-content active">
+        <div class="status-hud">
+            <div class="stat-card"><span class="stat-label">Pi Temp</span><span class="stat-value" id="hud-temp">--°C</span></div>
+            <div class="stat-card"><span class="stat-label">Pi Uptime</span><span class="stat-value" id="hud-pi-up">-- Hrs</span></div>
+            <div class="stat-card"><span class="stat-label">Pi CPU</span><span class="stat-value" id="hud-cpu">--%</span></div>
+            <div class="stat-card"><span class="stat-label">Pi RAM</span><span class="stat-value" id="hud-ram">--%</span></div>
+            <div class="stat-card"><span class="stat-label">HW Watchdog</span><span class="stat-value" id="hud-hw-watchdog">--</span></div>
+            <div class="stat-card"><span class="stat-label">SW Watchdog</span><span class="stat-value" id="hud-sw-watchdog">--</span></div>
+            <div class="stat-card"><span class="stat-label">Load (1m)</span><span class="stat-value" id="hud-load">--</span></div>
+
+            <div class="stat-card"><span class="stat-label">EMI Uptime</span><span class="stat-value" id="hud-emi-up">-- Days</span></div>
+            <div class="stat-card"><span class="stat-label">EMI Mem</span><span class="stat-value" id="hud-emi-mem">--%</span></div>
+        </div>
+        <div class="chart-container">
+            <h2>Environment Sensors</h2>
+            <div class="chart-stats-container" id="stats-sensors"></div>
+            <canvas id="sensorChart"></canvas>
+        </div>
+    </div>
+
+    <div id="tab-emi" class="tab-content">
+        <div class="relay-panel">
+            <h2>EMI-300 Live Digital States</h2>
+            <h3 style="margin: 15px 0 5px 0; font-size: 16px; color: #3498db;">Relays</h3><div class="digital-grid" id="grid-relays"></div>
+            <h3 style="margin: 15px 0 5px 0; font-size: 16px; color: #e67e22;">Alarms</h3><div class="digital-grid" id="grid-alarms"></div>
+            <h3 style="margin: 15px 0 5px 0; font-size: 16px; color: #9b59b6;">GPIOs</h3><div class="digital-grid" id="grid-gpios"></div>
+        </div>
+        <div class="chart-container">
+            <h2>Network Device Voltages (EMI-300)</h2>
+            <div class="chart-stats-container" id="stats-voltages"></div>
+            <canvas id="voltageChart"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>EMI-300 System Health</h2>
+            <div class="chart-stats-container" id="stats-emi-sys"></div>
+            <canvas id="emiSysChart"></canvas>
+        </div>
+    </div>
+
+    <div id="tab-pi" class="tab-content">
+
+
+        <div class="relay-panel" style="margin-top: 20px; border-left: 4px solid #9b59b6;">
+            <h2>System Health Reporting</h2>
+            <p style="color: #bdc3c7; font-size: 14px; margin-bottom: 15px;">
+                Manually trigger the py_monitor.py script to send a full diagnostic email to the configured Ocean Networks mailing list.
+            </p>
+            <button id="email-btn" class="chart-btn export-btn" onclick="sendTestEmail()">
+                ✉️ Send Diagnostic Email
+            </button>
+        </div>
+
+
+
+
+        <div class="chart-container">
+            <h2>Pi Zero System Health</h2>
+            <div class="chart-stats-container" id="stats-system"></div>
+            <canvas id="systemChart"></canvas>
+        </div>
+        <div class="relay-panel">
+            <h2>Local Pi Relay Controls</h2>
+            <div><span>Relay 1 (GPIO 17): </span><button class="relay-btn btn-on" onclick="toggleRelay(1, 'on')">Turn ON</button><button class="relay-btn btn-off" onclick="toggleRelay(1, 'off')">Turn OFF</button></div>
+            <div style="margin-top: 10px;"><span>Relay 2 (GPIO 27): </span><button class="relay-btn btn-on" onclick="toggleRelay(2, 'on')">Turn ON</button><button class="relay-btn btn-off" onclick="toggleRelay(2, 'off')">Turn OFF</button></div>
+            <p id="relay-status" style="color: #f1c40f; margin-top: 15px;">Ready</p>
+        </div>
+    </div>
+
+    <div id="tab-compare" class="tab-content">
+        <div class="chart-container" style="border: 2px solid #3498db;">
+            <h2 style="color: #3498db;">Custom Comparison Chart</h2>
+            <div style="color: #bdc3c7; font-size: 14px; margin-bottom: 15px;">Plot any two data points against each other on dual axes.</div>
+            <div class="filter-bar" style="margin-bottom: 15px; background-color: #2c3e50; border: 1px solid #34495e;">
+                <label for="compare1">Axis 1 (Left):</label>
+                <select id="compare1" onchange="drawCompareChart()"></select>
+                <label for="compare2" style="margin-left: 15px;">Axis 2 (Right):</label>
+                <select id="compare2" onchange="drawCompareChart()"></select>
+            </div>
+            <div class="chart-stats-container" id="stats-compare"></div>
+            <canvas id="compareChart"></canvas>
+        </div>
+    </div>
+
+ <!-- -------------- -->
+ <!-- Backup Tab -->
+ <!-- -------------- -->
+
+
+    <div id="tab-backups" class="tab-content">
+        <div class="chart-container">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <h2 style="color: #2ecc71; margin: 0;">Backup Vault</h2>
+                
+                <div style="display: flex; gap: 10px;">
+                    <button id="backup-btn" class="chart-btn" onclick="triggerBackup()" style="background-color: #f39c12;">💾 Run Backup</button>
+                    <button id="mount-btn" class="chart-btn" onclick="mountUSB()" style="background-color: #3498db;">🔌 Mount USB</button>
+                    <button id="eject-btn" class="chart-btn reset-btn" onclick="ejectUSB()" style="background-color: #e74c3c;">⏏️ Eject USB</button>
+                    <button id="verify-btn" class="chart-btn" onclick="verifyBackups()" style="background-color: #9b59b6;">🔍 Verify Integrity</button>
+                </div>
+            </div>
+            <div style="color: #bdc3c7; font-size: 14px; margin-bottom: 20px;">Securely download database snapshots stored on /mnt/usb1/</div>
+            
+            <div id="backup-list" style="text-align: left; max-width: 600px; margin: 0 auto;">
+                <p>Loading backup vault...</p>
+            </div>
+        </div>
+    </div>
+
+
+<div id="tab-logs" class="tab-content">
+        <div class="chart-container" style="text-align: left;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="color: #ecf0f1; margin-bottom: 5px;">System Diagnostic Logs</h2>
+                <button class="chart-btn filter-btn" onclick="fetchLogs()">🔄 Refresh Logs</button>
+            </div>
+            
+            <h3 style="color: #e74c3c; margin-top: 20px; font-size: 16px;">Live Sensor Errors (sensor_logger.service)</h3>
+            <pre id="log-sensor" style="background-color: #1e1e1e; color: #e74c3c; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 250px; font-size: 13px;">Loading sensor logs...</pre>
+
+            <h3 style="color: #3498db; margin-top: 20px; font-size: 16px;">Web Backend (flask_api.service)</h3>
+            <pre id="log-flask" style="background-color: #1e1e1e; color: #3498db; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 250px; font-size: 13px;">Loading Flask logs...</pre>
+
+            <h3 style="color: #f1c40f; margin-top: 20px; font-size: 16px;">Web Frontdoor (nginx.service)</h3>
+            <pre id="log-nginx" style="background-color: #1e1e1e; color: #f1c40f; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 250px; font-size: 13px;">Loading Nginx logs...</pre>
+
+            <h3 style="color: #2ecc71; margin-top: 20px; font-size: 16px;">Automated Backup Logs</h3>
+            <pre id="log-backup" style="background-color: #1e1e1e; color: #2ecc71; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 250px; font-size: 13px;">Loading backup logs...</pre>
+
+            <h3 style="color: #f39c12; margin-top: 20px; font-size: 16px;">Email Alerts (pi_monitor.log)</h3>
+            <pre id="log-email" style="background-color: #1e1e1e; color: #f39c12; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 250px; font-size: 13px;">Loading email logs...</pre>
+
+            <h3 style="color: #9b59b6; margin-top: 20px; font-size: 16px;">Hardware & Power Health (dmesg)</h3>
+            <pre id="log-dmesg" style="background-color: #1e1e1e; color: #9b59b6; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 250px; font-size: 13px;">Loading hardware logs...</pre>
+
+            <h3 style="color: #e67e22; margin-top: 20px; font-size: 16px;">Security & SSH Access (auth.log)</h3>
+            <pre id="log-auth" style="background-color: #1e1e1e; color: #e67e22; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 250px; font-size: 13px;">Loading auth logs...</pre>
+
+            <h3 style="color: #1abc9c; margin-top: 20px; font-size: 16px;">Automated Tasks (cron)</h3>
+            <pre id="log-cron" style="background-color: #1e1e1e; color: #1abc9c; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 250px; font-size: 13px;">Loading cron logs...</pre>
+
+            <h3 style="color: #c0392b; margin-top: 20px; font-size: 16px;">Web Errors (nginx error.log)</h3>
+            <pre id="log-nginx-err" style="background-color: #1e1e1e; color: #c0392b; padding: 15px; border-radius: 5px; overflow-x: auto; max-height: 250px; font-size: 13px;">Loading Nginx errors...</pre>
+
+        </div>
+    </div>
+
+<!-- -------- -->
+<!--Maual log -->
+<!-- -------- -->
+
+
+
+<div id="tab-manual" class="tab-content">
+    <div class="chart-container">
+        <h2 style="color: #ecf0f1;">Manual Operations Log</h2>
+        <p style="color: #bdc3c7;">Record system changes, drive swaps, or observations here.</p>
+        
+
+        <div style="margin-bottom: 20px;">
+            <div id="tag-container" style="margin-bottom: 10px; display: flex; gap: 8px; flex-wrap: wrap;">
+                <span style="color: #bdc3c7; font-size: 14px; margin-right: 5px; line-height: 28px;">Tags:</span>
+                </div>
+            <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center;">
+                <input type="text" id="new-tag-input" placeholder="Create new tag..." 
+                       style="background: #1e1e1e; color: white; border: 1px solid #34495e; padding: 6px 10px; border-radius: 5px; font-size: 13px; width: 150px;">
+                <button class="chart-btn" onclick="addNewTag()" style="padding: 6px 12px; font-size: 13px; background-color: #9b59b6;">+ Add</button>
+            </div>
+
+
+        <textarea id="manual-input" placeholder="Type your log entry here..." 
+        style="width: 100%; height: 80px; background: #1e1e1e; color: white; border: 1px solid #34495e; padding: 10px; border-radius: 5px; font-family: sans-serif;"></textarea>
+    
+           <div style="margin-top: 10px; display: flex; gap: 10px;">
+        <button class="chart-btn" onclick="submitManualLog()" style="background: #3498db;">💾 Post Entry</button>
+        <button class="chart-btn" onclick="downloadManualLog()" style="background: #27ae60;">📥 Download Log</button>
+        </div>
+        </div>
+
+
+        <hr style="border: 0; border-top: 1px solid #34495e; margin: 20px 0;">
+        
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3 style="color: #ecf0f1; margin: 0; font-size: 16px;">Log History</h3>
+            <div>
+                <label for="log-filter" style="color: #bdc3c7; font-size: 14px; margin-right: 5px;">Filter by Tag:</label>
+                <select id="log-filter" onchange="filterLogs()" style="background: #1e1e1e; color: white; border: 1px solid #34495e; padding: 5px; border-radius: 5px; font-size: 13px;">
+                    <option value="all">Show All Logs</option>
+                    </select>
+            </div>
+        </div>
+
+        <pre id="manual-log-display" style="background: #1e1e1e; color: #f1c40f; padding: 15px; border-radius: 5px; text-align: left; max-height: 400px; overflow-y: auto; font-size: 14px;">Loading logs...</pre>
+    </div>
+</div>
+
+
+    <script src="dashboard.js"></script>
+</body>
+</html>
